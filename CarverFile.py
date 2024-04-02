@@ -2,17 +2,19 @@ import numpy as np
 import cv2
 from typing import List, Tuple
 
+
 class Carver:
 
     def __init__(self):
         pass
+
     def calculate_energy(self, source_image) -> np.ndarray:
         energy_image = cv2.Sobel(source_image.astype(float),
-                                      ddepth=cv2.CV_16S,
-                                      dx=1,
-                                      dy=0,
-                                      ksize=3,
-                                      borderType=cv2.BORDER_REFLECT)
+                                 ddepth=cv2.CV_16S,
+                                 dx=1,
+                                 dy=0,
+                                 ksize=3,
+                                 borderType=cv2.BORDER_REFLECT)
         energy_image = (np.abs(energy_image)).astype(np.uint8)
         energy_image = cv2.cvtColor(energy_image, cv2.COLOR_BGR2GRAY)
         return energy_image
@@ -41,9 +43,19 @@ class Carver:
         #  of the self.edge_cv_image. Each pixel is based on cumulative information from the row above it (row-1) and
         #  the value of the energy for this pixel.
 
+        for row in range(1, energy_image.shape[0]):
 
-
-
+            cumulative_energy_image[row, 0] = energy_image[row, 0] + \
+                                              min(int(cumulative_energy_image[row - 1, 0]),
+                                                  int(cumulative_energy_image[row - 1, 1]))
+            for col in range(1, energy_image.shape[1] - 1):
+                cumulative_energy_image[row, col] = energy_image[row, col] + \
+                                                    min(int(cumulative_energy_image[row - 1, col - 1]),
+                                                        int(cumulative_energy_image[row - 1, col]),
+                                                        int(cumulative_energy_image[row - 1, col + 1]))
+            cumulative_energy_image[row, energy_image.shape[1] - 1] = energy_image[row, energy_image.shape[1] - 1] + \
+                                                                      min(int(cumulative_energy_image[row - 1, energy_image.shape[1] - 2]),
+                                                                          int(cumulative_energy_image[row - 1, energy_image.shape[1] - 1]))
 
         return cumulative_energy_image
 
@@ -66,14 +78,25 @@ class Carver:
         #  first item on the list is the x coordinate of the seam on the top row, the next value on the list is the
         #  x coordinate of the next row and so forth. The minstart_x that was calculated above will be the last number
         #  on the list.
-        seam_values = []
+        seam_values = [minstart_x]
+        x = minstart_x
+        for row in range(cumulative_energy_image.shape[0]-2, -1, -1):
+            # print(f"{row=}\t{x=}")
+            min = cumulative_energy_image[row][x]
+            minLoc = x
+            if x > 0 and cumulative_energy_image[row][x-1]<min:
+                min = cumulative_energy_image[row][x-1]
+                minLoc = x - 1
+            if x < cumulative_energy_image.shape[1]-1 and cumulative_energy_image[row][x+1] < min:
+                minLoc = x + 1
+            x = minLoc
+            seam_values.append(x)
 
-
-
+        seam_values.reverse()
         return seam_values
 
     def build_seam_image_with_path(self, source_image: np.ndarray,
-                                seam_values: List[int]) -> np.ndarray:
+                                   seam_values: List[int]) -> np.ndarray:
         """
         given a list of the column numbers for a path from the top row to the bottom row, creates an image with a bw
         copy of the source and a red line representing the seam.
@@ -85,16 +108,17 @@ class Carver:
         """
         if len(seam_values) != source_image.shape[0]:
             raise RuntimeError(f"Error - seam list is different height than image. " \
-                                 f"{len(seam_values)=}\t{source_image.shape[0]=}")
+                               f"{len(seam_values)=}\t{source_image.shape[0]=}")
         seam_image = source_image.copy()
         # TODO: loop through the ints in seam_values and set the corresponding points in seam_image to become red, via
         #       a line akin to seam_image[row, col] = (0, 0, 255).
         #       (The program will work fine without this, but it's nice to see where the seam winds up.)
-
+        for row in range(len(seam_values)):
+            seam_image[row][seam_values[row]] = (0, 0, 255)
         return seam_image
 
     def remove_seam_from_image(self, seam_values: List[int],
-                                     source_image: np.ndarray) -> np.ndarray:
+                               source_image: np.ndarray) -> np.ndarray:
         """
         remove the pixels corresponding the horizontal positions in the seam_values list from the source_image. Any
         pixels to the left of the value stored in seam_values for a given row will stay the same, but any pixels to
@@ -105,12 +129,12 @@ class Carver:
         """
         if len(seam_values) != source_image.shape[0]:
             raise RuntimeError(f"Error - seam list is different height than image. " \
-                                    f"{len(seam_values)=}\t{source_image.shape[0]=}")
+                               f"{len(seam_values)=}\t{source_image.shape[0]=}")
 
         result_image = source_image.copy()
         for r in range(source_image.shape[0]):
             # copy the second "half" of the row to a range one pixel to the left.
             result_image[r, seam_values[r]:-1] = result_image[r, seam_values[r] + 1:]
 
-        result_image = result_image[:, :-1] # crop the last column.
+        result_image = result_image[:, :-1]  # crop the last column.
         return result_image

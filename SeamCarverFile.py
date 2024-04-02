@@ -181,6 +181,7 @@ class SeamCarver:
         The user has just pressed the "Find Seam" button. Calculate the seam location and update the "Seam" panel.
         :return: None
         """
+        print("Doing \"Find Seam.\"")
         cumulative = self.carver.generate_cumulative_energy_grid(self.energy_image)
 
         self.seam_values = self.carver.find_seam_locations(self.energy_image,
